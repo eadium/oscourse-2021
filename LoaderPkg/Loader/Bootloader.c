@@ -113,8 +113,7 @@ InitGraphics (
   //
   // Hint: Use GetMode/SetMode functions.
   //
-
-  UINT32 DesiredWidth = 1024U, DesiredHeight = 768U, MaxModIdx = -1U;
+  UINT32 DesiredWidth = 1920U, DesiredHeight = 1080U, MaxModIdx = -1U;
   for (UINT32 i = 0; i < GraphicsOutput->Mode->MaxMode; i++) {
     EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *ModInfo;
     UINTN ModInfoSz;
