@@ -25,8 +25,18 @@ sched_yield(void) {
      * below to halt the cpu */
 
     // LAB 3: Your code here:
+    static int i = 0;
+    int j = 0;
+    while (j != NENV) {
+        i = (i+1) % NENV;
+        if (envs[i].env_status == ENV_RUNNABLE || envs[i].env_status == ENV_RUNNING) {
+            env_run(&envs[i]);
+        }
+        j++;
+    }
 
-
+    if (envs[0].env_status == ENV_RUNNABLE || envs[0].env_status == ENV_RUNNING)
+        env_run(&envs[0]);
 
     cprintf("Halt\n");
 
@@ -43,9 +53,13 @@ sched_halt(void) {
     /* For debugging and testing purposes, if there are no runnable
      * environments in the system, then drop into the kernel monitor */
     int i;
-    for (i = 0; i < NENV; i++)
+    for (i = 0; i < NENV; i++) {
         if (envs[i].env_status == ENV_RUNNABLE ||
-            envs[i].env_status == ENV_RUNNING) break;
+            envs[i].env_status == ENV_RUNNING) {
+                cprintf("envs[%d].env_status %d", i, envs[i].env_status);
+                break;
+            }
+    }
     if (i == NENV) {
         cprintf("No runnable environments in the system!\n");
         for (;;) monitor(NULL);
@@ -67,3 +81,5 @@ sched_halt(void) {
     for (;;)
         ;
 }
+
+
