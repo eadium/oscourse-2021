@@ -18,6 +18,9 @@
 #define RTC_CREG 0x0C
 #define RTC_DREG 0x0D
 
+#define IO_RTC_CMND 0x70
+#define IO_RTC_DATA 0x71
+
 #define RTC_SEC  0x00
 #define RTC_MIN  0x02
 #define RTC_HOUR 0x04
