@@ -46,6 +46,8 @@ static struct Command commands[] = {
         {"timer_start", "timer start", mon_start},
         {"timer_stop", "timer stop", mon_stop},
         {"timer_freq", "check processor frequency", mon_frequency},
+        // LAB 6
+        {"memory", "Print physical memory pages", mon_memory}
 };
 #define NCOMMANDS (sizeof(commands) / sizeof(commands[0]))
 
@@ -117,7 +119,11 @@ mon_stop(int argc, char **argv, struct Trapframe *tf) {
  * This command should call dump_memory_lists()
  */
 // LAB 6: Your code here
-
+int
+mon_memory(int argc, char **argv, struct Trapframe *tf) {
+    dump_memory_lists();
+    return 0;
+}
 /* Kernel monitor command interpreter */
 
 int

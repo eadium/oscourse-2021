@@ -14,12 +14,12 @@
 #include <kern/trap.h>
 
 /*
- * Term "page" used here does not
- * refer to real x86 page but rather
- * some memory region of size 2^N that
- * is alligned on 2^N that is described
- * by struct Page
- */
+* Term "page" used here does not
+* refer to real x86 page but rather
+* some memory region of size 2^N that
+* is alligned on 2^N that is described
+* by struct Page
+*/
 
 /* for O(1) page allocation */
 static struct List free_classes[MAX_CLASS];
@@ -78,21 +78,27 @@ list_init(struct List *list) {
 }
 
 /*
- * Appends list element 'new' after list element 'list'
- */
+* Appends list element 'new' after list element 'list'
+*/
 inline static void __attribute__((always_inline))
 list_append(struct List *list, struct List *new) {
     // LAB 6: Your code here
+    new->next = list->next;
+    new->prev = list;
+    list->next->prev = new;
+    list->next = new;
 }
 
 /*
- * Deletes list element from list.
- * NOTE: Use list_init() on deleted List element
- */
+* Deletes list element from list.
+* NOTE: Use list_init() on deleted List element
+*/
 inline static struct List *__attribute__((always_inline))
 list_del(struct List *list) {
     // LAB 6: Your code here.
-
+    list->prev->next = list->next;
+    list->next->prev = list->prev;
+    list_init(list);
     return list;
 }
 
@@ -150,23 +156,23 @@ free_desc_rec(struct Page *p) {
 }
 
 /*
- * This function allocates child
- * node for given parent in physical memory tree
- * right indicated whether left or right child should
- * be allocated.
- *
- * New child describes lower (for the left one)
- * or higher (for the right one) half of memory
- * described by parent node.
- * The memory have the same type as for parent.
- *
- * NOTE: Be careful with overflows
- * NOTE: Child node should have it's
- * reference counter to be equal either 0 or 1
- * depending on whether parent's refc is 0 or non-zero,
- * correspondingly.
- * HINT: Use alloc_descriptor() here
- */
+* This function allocates child
+* node for given parent in physical memory tree
+* right indicated whether left or right child should
+* be allocated.
+*
+* New child describes lower (for the left one)
+* or higher (for the right one) half of memory
+* described by parent node.
+* The memory have the same type as for parent.
+*
+* NOTE: Be careful with overflows
+* NOTE: Child node should have it's
+* reference counter to be equal either 0 or 1
+* depending on whether parent's refc is 0 or non-zero,
+* correspondingly.
+* HINT: Use alloc_descriptor() here
+*/
 static struct Page *
 alloc_child(struct Page *parent, bool right) {
     assert_physical(parent);
@@ -174,8 +180,23 @@ alloc_child(struct Page *parent, bool right) {
 
     // LAB 6: Your code here
 
-    struct Page *new = NULL;
-
+    struct Page *new = alloc_descriptor(parent->state);
+    new->class = parent->class - 1;
+    new->parent = parent;
+    if (right) {
+        new->addr = parent->addr + (1ULL << (new->class));
+    } else {
+        new->addr = parent->addr; 
+    }
+    if (parent->refc > 0) {
+        new->refc = 1;
+    } else {
+        new->refc = 0;
+    }
+    if (right) {
+        parent->right = new;
+    } else {
+        parent->left = new; }
     return new;
 }
 
@@ -258,8 +279,8 @@ page_unref(struct Page *page) {
     assert(page->refc);
 
     /* NOTE Decrementing refc after
-     * this if statement is important
-     * to prevent double frees */
+    * this if statement is important
+    * to prevent double frees */
 
     if (page->refc == 1) {
         page_unref(page->left);
@@ -298,24 +319,24 @@ page_unref(struct Page *page) {
 }
 
 /*
- * This function attaches a new memory region
- * to the physical memory tree during the
- * initiallization of the memory manager.
- *
- * HINT: Use page_lookup() with alloc == 1 for
- * each page of this memory region. Try
- * using as huge memory pages as possible.
- *
- * Roughly speaking, this this function
- * should first iterate from smallest
- * page size class (0) to MAX_CLASS trying to get
- * aligned address. And then iterate from maximal
- * used class to minimal, allocating page of that
- * class it it does not extend beyond given region
- *
- * HINT: CLASS_MASK() and CLASS_SIZE() macros might be
- * useful here
- */
+* This function attaches a new memory region
+* to the physical memory tree during the
+* initiallization of the memory manager.
+*
+* HINT: Use page_lookup() with alloc == 1 for
+* each page of this memory region. Try
+* using as huge memory pages as possible.
+*
+* Roughly speaking, this this function
+* should first iterate from smallest
+* page size class (0) to MAX_CLASS trying to get
+* aligned address. And then iterate from maximal
+* used class to minimal, allocating page of that
+* class it it does not extend beyond given region
+*
+* HINT: CLASS_MASK() and CLASS_SIZE() macros might be
+* useful here
+*/
 static void
 attach_region(uintptr_t start, uintptr_t end, enum PageState type) {
     if (trace_memory_more) cprintf("Attaching memory region [%08lX, %08lX] with type %d\n", start, end - 1, type);
@@ -327,20 +348,29 @@ attach_region(uintptr_t start, uintptr_t end, enum PageState type) {
     end = ROUNDUP(end, CLASS_SIZE(0));
 
     // LAB 6: Your code here
+    uintptr_t position = start;
+
+    while (position < end) {
+        class = 0;
+        while(!(position & CLASS_MASK(class+1)) && (position + CLASS_SIZE(class+1) <= end))
+            class += 1;
+        page_lookup(NULL, position, class, type, 1);
+        position += CLASS_SIZE(class);
+    }
 }
 
 /*
- * Helper function for dumping single page table
- * entry (base) describing element with given size (step)
- * isz indicates if given entry is a leaf node
- */
+* Helper function for dumping single page table
+* entry (base) describing element with given size (step)
+* isz indicates if given entry is a leaf node
+*/
 inline static void
 dump_entry(pte_t base, size_t step, bool isz) {
     cprintf("%s[%08llX, %08llX] %c%c%c%c%c -- step=%zx\n",
             step == 4 * KB ? " >    >    >    >" :
             step == 2 * MB ? " >    >    >" :
             step == 1 * GB ? " >    >" :
-                             " >",
+                            " >",
             PTE_ADDR(base),
             PTE_ADDR(base) + (isz ? (step * isz - 1) : 0xFFF),
             base & PTE_P ? 'P' : '-',
@@ -379,13 +409,13 @@ check_physical_tree(struct Page *page) {
         assert(page->head.next && page->head.prev);
         if (!list_empty((struct List *)page)) {
             for (struct List *n = page->head.next;
-                 n != &free_classes[page->class]; n = n->next) {
+                n != &free_classes[page->class]; n = n->next) {
                 assert(n != &page->head);
             }
         }
     } else {
         for (struct List *n = (struct List *)page->head.next;
-             (struct List *)page != n; n = n->next) {
+            (struct List *)page != n; n = n->next) {
             struct Page *v = (struct Page *)n;
             assert_virtual(v);
             assert(v->phy == page);
@@ -427,8 +457,8 @@ check_virtual_tree(struct Page *page, int class) {
 }
 
 /*
- * Pretty-print virtual memory tree
- */
+* Pretty-print virtual memory tree
+*/
 void
 dump_virtual_tree(struct Page *node, int class) {
     // LAB 7: Your code here
@@ -437,14 +467,24 @@ dump_virtual_tree(struct Page *node, int class) {
 void
 dump_memory_lists(void) {
     // LAB 6: Your code here
-
+    //    bad try
+    struct List *li = NULL;
+    struct Page *node;
+    for (int i = MAX_CLASS; i > -1; i--){
+        if (&free_classes[i]) {
+            for (li = free_classes[i].next; li != &free_classes[i]; li = li->next) {
+                node = (struct Page *)li;
+                cprintf("class: %d, at address: %08lX\n", node->class, page2pa(node));
+            }
+        }
+    }
 }
 
 /*
- * Pretty-print page table
- * (Use dump_entry())
- * NOTE: Don't forget about PTE_PS
- */
+* Pretty-print page table
+* (Use dump_entry())
+* NOTE: Don't forget about PTE_PS
+*/
 void
 dump_page_table(pte_t *pml4) {
     uintptr_t addr = 0;
@@ -462,7 +502,7 @@ alloc_page(int class, int flags) {
     if (flags & ALLOC_POOL) flags |= ALLOC_BOOTMEM;
 
     /* Find page that is not smaller than requested
-     * (Pool memory should also be within BOOT_MEM_SIZE) */
+    * (Pool memory should also be within BOOT_MEM_SIZE) */
     for (int pclass = class; pclass < MAX_CLASS; pclass++, li = NULL) {
         for (li = free_classes[pclass].next; li != &free_classes[pclass]; li = li->next) {
             peer = (struct Page *)li;
@@ -490,7 +530,7 @@ found:
         first_pool = newpool;
         free_desc_count += ndesc;
         if (trace_memory_more) cprintf("Allocated pool of size %zu at [%08lX, %08lX]\n",
-                                       ndesc, page2pa(peer), page2pa(peer) + (long)CLASS_MASK(class));
+                                    ndesc, page2pa(peer), page2pa(peer) + (long)CLASS_MASK(class));
     }
 
     struct Page *new = page_lookup(peer, page2pa(peer), class, PARTIAL_NODE, 1);
@@ -503,7 +543,7 @@ found:
         allocating_pool = 0;
     } else {
         if (trace_memory_more) cprintf("Allocated page at [%08lX, %08lX] class=%d\n",
-                                       page2pa(new), page2pa(new) + (long)CLASS_MASK(new->class), new->class);
+                                    page2pa(new), page2pa(new) + (long)CLASS_MASK(new->class), new->class);
     }
 
     assert(page2pa(new) >= PADDR(end) || page2pa(new) + CLASS_MASK(new->class) < IOPHYSMEM);
@@ -514,17 +554,17 @@ found:
 static struct Page *zero_page, *one_page;
 
 /* Buffers for filler pages are statically allocated for simplicity
- * (this is also required for early KASAN) */
+* (this is also required for early KASAN) */
 __attribute__((aligned(HUGE_PAGE_SIZE))) uint8_t zero_page_raw[HUGE_PAGE_SIZE];
 __attribute__((aligned(HUGE_PAGE_SIZE))) uint8_t one_page_raw[HUGE_PAGE_SIZE];
 
 
 /*
- * This function initialized phyisical memory tree
- * with either UEFI memroy map or CMOS contents.
- * Every region is inserted into the tree using
- * attach_region() function.
- */
+* This function initialized phyisical memory tree
+* with either UEFI memroy map or CMOS contents.
+* Every region is inserted into the tree using
+* attach_region() function.
+*/
 static void
 detect_memory(void) {
     size_t basemem, extmem;
@@ -533,12 +573,13 @@ detect_memory(void) {
 
     /* Attach first page as reserved memory */
     // LAB 6: Your code here
-
+    attach_region(0, CLASS_SIZE(0), RESERVED_NODE);
     /* Attach memory that kernel stored in kerenl and old IO memory
-     * (from 0 to the physical address of end label. end points the the
-     *  end of kernel executable image.)*/
+    * (from 0 to the physical address of end label. end points the the
+    *  end of kernel executable image.)*/
     // LAB 6: Your code here
-
+    attach_region(IOPHYSMEM, PADDR(end), RESERVED_NODE);
+    
     /* Detech memory via ether UEFI or CMOS */
     if (uefi_lp && uefi_lp->MemoryMap) {
         EFI_MEMORY_DESCRIPTOR *start = (void *)uefi_lp->MemoryMap;
@@ -560,9 +601,9 @@ detect_memory(void) {
             max_memory_map_addr = MAX(start->NumberOfPages * EFI_PAGE_SIZE + start->PhysicalStart, max_memory_map_addr);
 
             /* Attach memory described by memory map entry described by start
-             * of type type*/
+            * of type type*/
             // LAB 6: Your code here
-
+            attach_region(start->PhysicalStart, max_memory_map_addr,  type);
 
 
             start = (void *)((uint8_t *)start + uefi_lp->MemoryMapDescriptorSize);
@@ -614,7 +655,7 @@ init_allocator(void) {
     /* Initiallize first pool */
 
     if (trace_memory_more) cprintf("First pool at [%08lX, %08lX]\n", PADDR(initial_buffer),
-                                   PADDR(initial_buffer) + INIT_DESCR * sizeof(struct Page));
+                                PADDR(initial_buffer) + INIT_DESCR * sizeof(struct Page));
 
     list_init(&free_descriptors);
     free_desc_count = INIT_DESCR;
