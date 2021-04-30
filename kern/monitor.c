@@ -49,7 +49,11 @@ static struct Command commands[] = {
         {"timer_stop", "timer stop", mon_stop},
         {"timer_freq", "check processor frequency", mon_frequency},
         // LAB 6
-        {"memory", "Print physical memory pages", mon_memory}
+        {"memory", "Print physical memory pages", mon_memory},
+        // LAB 7
+        {"mon_virt", "Print Print dump virtual tree", mon_virt},
+        {"mon_pagetable", "Print page tables", mon_pagetable}
+
 };
 #define NCOMMANDS (sizeof(commands) / sizeof(commands[0]))
 
@@ -130,6 +134,15 @@ mon_memory(int argc, char **argv, struct Trapframe *tf) {
 /* Implement mon_pagetable() and mon_virt()
  * (using dump_virtual_tree(), dump_page_table())*/
 // LAB 7: Your code here
+int mon_pagetable(int argc, char **argv, struct Trapframe *tf) {
+    dump_page_table(kspace.pml4);
+    return 0;
+}
+
+int mon_virt(int argc, char **argv, struct Trapframe *tf) {
+    dump_virtual_tree(kspace.root, MAX_CLASS);
+    return 0;
+}
 
 /* Kernel monitor command interpreter */
 
