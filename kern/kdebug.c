@@ -4,7 +4,6 @@
 #include <inc/dwarf.h>
 #include <inc/elf.h>
 #include <inc/x86.h>
-#include <kern/env.h>
 
 #include <kern/kdebug.h>
 #include <kern/pmap.h>
@@ -54,6 +53,17 @@ load_user_dwarf_info(struct Dwarf_Addrs *addrs) {
 
     memset(addrs, 0, sizeof(*addrs));
 
+    struct Elf *user_elf = (struct Elf *)(binary);
+    struct Secthdr *sect_hdr = (struct Secthdr *)(binary + user_elf->e_shoff);
+    const char *sh_str = (char *)(binary + sect_hdr[user_elf->e_shstrndx].sh_offset);
+    for (size_t i = 0; i < user_elf->e_shnum; ++i) {
+        for (size_t j = 0; j < sizeof(sections) / sizeof(*sections); ++j) {
+            if (!strcmp(&sh_str[sect_hdr[i].sh_name], sections[j].name)) {
+                *sections[j].start = binary + sect_hdr[i].sh_offset;
+                *sections[j].end = binary + sect_hdr[i].sh_offset + sect_hdr[i].sh_size;
+            }
+        }
+    }
     /* Load debug sections from curenv->binary elf image */
     // LAB 8: Your code here
 }
@@ -82,6 +92,11 @@ debuginfo_rip(uintptr_t addr, struct Ripdebuginfo *info) {
     /* Temporarily load kernel cr3 and return back once done.
     * Make sure that you fully understand why it is necessary. */
     // LAB 8: Your code here
+    //
+    uintptr_t old_cr3 = curenv->address_space.cr3;
+    if (old_cr3 != kspace.cr3) {
+        lcr3(kspace.cr3);
+    }
 
     /* Load dwarf section pointers from either
      * currently running program binary or use
@@ -90,8 +105,13 @@ debuginfo_rip(uintptr_t addr, struct Ripdebuginfo *info) {
      * or kernel space */
     // LAB 8: Your code here:
 
+
     struct Dwarf_Addrs addrs;
-    load_kernel_dwarf_info(&addrs);
+    if (addr < MAX_USER_READABLE) {
+        load_user_dwarf_info(&addrs);
+    } else {
+        load_kernel_dwarf_info(&addrs);
+    }
 
     Dwarf_Off offset = 0, line_offset = 0;
     int res = info_by_address(&addrs, addr, &offset);
@@ -108,12 +128,8 @@ debuginfo_rip(uintptr_t addr, struct Ripdebuginfo *info) {
     * Hint: use line_for_address from kern/dwarf_lines.c */
 
     // LAB 2: Your res here:
-    void *buf;
-    buf  = &tmp_buf;
-    addr -= 5;
-    buf  = &info->rip_line;
-    res = line_for_address(&addrs, addr, line_offset, buf);
-    if (res < 0) goto error;
+    addr -= CALL_INSN_LEN;
+    res = line_for_address(&addrs, addr, line_offset, &info->rip_line);
 
     /* Find function name corresponding to given address.
     * Hint: note that we need the address of `call` instruction, but rip holds
@@ -121,14 +137,16 @@ debuginfo_rip(uintptr_t addr, struct Ripdebuginfo *info) {
     * Hint: use function_by_info from kern/dwarf_lines.c
     * Hint: info->rip_fn_name can be not NULL-terminated,
     * string returned by function_by_info will always be */
-
     // LAB 2: Your res here:
-    buf  = &tmp_buf;
-    res = function_by_info(&addrs, addr, offset, buf, &info->rip_fn_addr);
-    if (res < 0) goto error;
+    res = function_by_info(&addrs, addr, offset, &tmp_buf, &info->rip_fn_addr);
     strncpy(info->rip_fn_name, tmp_buf, 256);
     info->rip_fn_namelen = strnlen(info->rip_fn_name, 256);
+
+
 error:
+    if (old_cr3 != kspace.cr3) {
+        lcr3(old_cr3);
+    }
     return res;
 }
 

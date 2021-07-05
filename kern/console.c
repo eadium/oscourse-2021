@@ -245,8 +245,8 @@ fb_putc(int c) {
 
     /* Scoll up when we have reached the bottom of screen */
     if (crt_pos >= crt_size) {
-        nosan_memmove(crt_buf, crt_buf + uefi_stride * SYMBOL_SIZE,
-                      uefi_stride * (uefi_vres - SYMBOL_SIZE) * sizeof(uint32_t));
+        memmove(crt_buf, crt_buf + uefi_stride * SYMBOL_SIZE,
+                uefi_stride * (uefi_vres - SYMBOL_SIZE) * sizeof(uint32_t));
 
         size_t i = (uefi_vres - (uefi_vres % SYMBOL_SIZE) - SYMBOL_SIZE);
         nosan_memset(crt_buf + i * uefi_stride, 0, uefi_stride * (uefi_vres - i) * sizeof(uint32_t));
