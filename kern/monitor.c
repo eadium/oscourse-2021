@@ -11,14 +11,24 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/tsc.h>
+#include <kern/timer.h>
+#include <kern/env.h>
+#include <kern/pmap.h>
+#include <kern/trap.h>
 
 #define WHITESPACE "\t\r\n "
 #define MAXARGS    16
 
 /* Functions implementing monitor commands */
 int mon_help(int argc, char **argv, struct Trapframe *tf);
+int mon_hello(int argc, char **argv, struct Trapframe *tf);
 int mon_kerninfo(int argc, char **argv, struct Trapframe *tf);
 int mon_backtrace(int argc, char **argv, struct Trapframe *tf);
+int mon_start(int argc, char **argv, struct Trapframe *tf);
+int mon_stop(int argc, char **argv, struct Trapframe *tf);
+int mon_frequency(int argc, char **argv, struct Trapframe *tf);
+int mon_memory(int argc, char **argv, struct Trapframe *tf);
 
 struct Command {
     const char *name;
@@ -29,8 +39,15 @@ struct Command {
 
 static struct Command commands[] = {
         {"help", "Display this list of commands", mon_help},
+        {"hello", "What a nice day, isn't it?", mon_hello},
         {"kerninfo", "Display information about the kernel", mon_kerninfo},
         {"backtrace", "Print stack backtrace", mon_backtrace},
+        // LAB 5
+        {"timer_start", "timer start", mon_start},
+        {"timer_stop", "timer stop", mon_stop},
+        {"timer_freq", "check processor frequency", mon_frequency},
+        // LAB 6
+        {"memory", "Print physical memory pages", mon_memory}
 };
 #define NCOMMANDS (sizeof(commands) / sizeof(commands[0]))
 
@@ -40,6 +57,12 @@ int
 mon_help(int argc, char **argv, struct Trapframe *tf) {
     for (size_t i = 0; i < NCOMMANDS; i++)
         cprintf("%s - %s\n", commands[i].name, commands[i].desc);
+    return 0;
+}
+
+int
+mon_hello(int argc, char **argv, struct Trapframe *tf) {
+    cprintf("Hello World!\n");
     return 0;
 }
 
@@ -60,12 +83,57 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf) {
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf) {
     // LAB 2: Your code here
+	// Your code here.
+	uint64_t *rbp = (uint64_t *)read_rbp();
+	uint64_t *rip = (uint64_t *)read_rip();
+	cprintf("Stack backtrace: \n");
 
+	do {
+		cprintf("  rbp %016lx  rip %016lx\n",  (uintptr_t)rbp,  (uintptr_t)rip);
+		struct Ripdebuginfo info;
+		debuginfo_rip((uintptr_t)rip, &info);
+        int offset=(uintptr_t)rip-info.rip_fn_addr;
+		cprintf(" %s:%d: %s+%u\n",info.rip_file, info.rip_line, info.rip_fn_name, offset);
+		rip = (uint64_t *) *(rbp+1);
+		rbp = (uint64_t *) (*rbp);
+	} while (rbp!=0);
+	return 0;
+}
+
+/* Implement timer_start (mon_start), timer_stop (mon_stop), timer_freq (mon_frequency) commands. */
+// LAB 5: Your code here:
+int
+mon_start(int argc, char **argv, struct Trapframe *tf) {
+  if (argc != 2) return 1;
+  timer_start(argv[1]);
+  return 0;
+}
+
+int
+mon_stop(int argc, char **argv, struct Trapframe *tf) {
+  timer_stop();
+  return 0;
+}
+
+/* Implement memory (mon_memory) command.
+ * This command should call dump_memory_lists()
+ */
+// LAB 6: Your code here
+int
+mon_memory(int argc, char **argv, struct Trapframe *tf) {
+    dump_memory_lists();
     return 0;
+}
+/* Kernel monitor command interpreter */
+
+int
+mon_frequency(int argc, char **argv, struct Trapframe *tf) {
+  if (argc != 2) return 1;
+  timer_cpu_frequency(argv[1]);
+  return 0;
 }
 
 /* Kernel monitor command interpreter */
-
 static int
 runcmd(char *buf, struct Trapframe *tf) {
     int argc = 0;
@@ -105,6 +173,8 @@ monitor(struct Trapframe *tf) {
 
     cprintf("Welcome to the JOS kernel monitor!\n");
     cprintf("Type 'help' for a list of commands.\n");
+
+    if (tf) print_trapframe(tf);
 
     char *buf;
     do buf = readline("K> ");
