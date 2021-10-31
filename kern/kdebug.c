@@ -4,6 +4,7 @@
 #include <inc/dwarf.h>
 #include <inc/elf.h>
 #include <inc/x86.h>
+#include <kern/env.h>
 
 #include <kern/kdebug.h>
 #include <inc/uefi.h>
@@ -66,6 +67,12 @@ debuginfo_rip(uintptr_t addr, struct Ripdebuginfo *info) {
     * Hint: use line_for_address from kern/dwarf_lines.c */
 
     // LAB 2: Your res here:
+    void *buf;
+    buf  = &tmp_buf;
+    addr -= 5;
+    buf  = &info->rip_line;
+    res = line_for_address(&addrs, addr, line_offset, buf);
+    if (res < 0) goto error;
 
     /* Find function name corresponding to given address.
     * Hint: note that we need the address of `call` instruction, but rip holds
@@ -75,7 +82,11 @@ debuginfo_rip(uintptr_t addr, struct Ripdebuginfo *info) {
     * string returned by function_by_info will always be */
 
     // LAB 2: Your res here:
-
+    buf  = &tmp_buf;
+    res = function_by_info(&addrs, addr, offset, buf, &info->rip_fn_addr);
+    if (res < 0) goto error;
+    strncpy(info->rip_fn_name, tmp_buf, 256);
+    info->rip_fn_namelen = strnlen(info->rip_fn_name, 256);
 error:
     return res;
 }
@@ -87,6 +98,29 @@ find_function(const char *const fname) {
      * and naive_address_by_fname which performs full traversal of DIE tree */
 
     // LAB 3: Your code here:
+    #ifdef CONFIG_KSPACE
+    struct {
+        const char *name;
+        uintptr_t addr;
+    } funcs[] = {
+        { "sys_yield", (uintptr_t)sys_yield },
+        { "sys_exit", (uintptr_t)sys_exit },
+    };
+
+    for (size_t i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
+        if (!strcmp(funcs[i].name, fname)) {
+        return funcs[i].addr;
+        }
+    }
+    #endif
+    
+    struct Dwarf_Addrs addrs;
+    load_kernel_dwarf_info(&addrs);
+    uintptr_t offset = 0;
+
+    if (!address_by_fname(&addrs, fname, &offset) && offset) return offset;
+
+    if (!naive_address_by_fname(&addrs, fname, &offset)) return offset;
 
     return 0;
 }
